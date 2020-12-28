@@ -80,6 +80,21 @@ func newComputeUtil(driver *Driver) (*ComputeUtil, error) {
 		openPorts:         driver.OpenPorts,
 	}, nil
 }
+func (c *ComputeUtil) networkName() string {
+	if strings.Contains(c.network, "/networks/") {
+		return c.network
+	}
+	return c.globalURL + "/networks/" + c.network
+}
+
+func (c *ComputeUtil) subnetworkName() string {
+	if strings.Contains(c.subnetwork, "/subnetworks/") {
+		return c.subnetwork
+	} else if c.subnetwork != "" {
+		return "projects/" + c.project + "/regions/" + c.region() + "/subnetworks/" + c.subnetwork
+	}
+	return ""
+}
 
 func (c *ComputeUtil) diskName() string {
 	return c.instanceName + "-disk"
@@ -193,7 +208,7 @@ func (c *ComputeUtil) openFirewallPorts(d *Driver) error {
 			Allowed:      []*raw.FirewallAllowed{},
 			SourceRanges: []string{"0.0.0.0/0"},
 			TargetTags:   []string{firewallTargetTag},
-			Network:      c.globalURL + "/networks/" + d.Network,
+			Network:      c.networkName(),
 		}
 	}
 
@@ -236,13 +251,6 @@ func (c *ComputeUtil) instance() (*raw.Instance, error) {
 func (c *ComputeUtil) createInstance(d *Driver) error {
 	log.Infof("Creating instance")
 
-	var net string
-	if strings.Contains(d.Network, "/networks/") {
-		net = d.Network
-	} else {
-		net = c.globalURL + "/networks/" + d.Network
-	}
-
 	instance := &raw.Instance{
 		Name:        c.instanceName,
 		Description: "docker host vm",
@@ -257,7 +265,7 @@ func (c *ComputeUtil) createInstance(d *Driver) error {
 		},
 		NetworkInterfaces: []*raw.NetworkInterface{
 			{
-				Network: net,
+				Network: c.networkName(),
 			},
 		},
 		Tags: &raw.Tags{
@@ -273,12 +281,7 @@ func (c *ComputeUtil) createInstance(d *Driver) error {
 			Preemptible: c.preemptible,
 		},
 	}
-
-	if strings.Contains(c.subnetwork, "/subnetworks/") {
-		instance.NetworkInterfaces[0].Subnetwork = c.subnetwork
-	} else if c.subnetwork != "" {
-		instance.NetworkInterfaces[0].Subnetwork = "projects/" + c.project + "/regions/" + c.region() + "/subnetworks/" + c.subnetwork
-	}
+	instance.NetworkInterfaces[0].Subnetwork = c.subnetworkName()
 
 	if !c.useInternalIPOnly {
 		cfg := &raw.AccessConfig{
